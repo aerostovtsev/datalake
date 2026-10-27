@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>datalake: MCP-сервер озера данных</title>
+<meta name="description" content="MCP-сервер к внутреннему озеру данных: 1,16 млн субъектов, 48 тыс. сделок, 3 млн строк финотчётности. Сотрудник спрашивает на естественном языке — агент сам пишет SQL и возвращает ответ. Только чтение, контакты поштучно.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#070606; --ink:#efe9dd; --soft:#cfc8ba; --muted:#9a9284; --faint:#6a6358; --line:rgba(239,233,221,.1);
+  --holo:linear-gradient(120deg,#7fe3f5 0%,#b49cff 50%,#ff9fd8 100%);
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+::selection{background:#b49cff;color:var(--bg)}
+a{color:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+h1,h2,h3{margin:0}
+h2{font-family:var(--mono);font-weight:800;font-size:clamp(1.8rem,3.6vw,2.9rem);line-height:1.1;letter-spacing:-.04em}
+h1 em,h2 em{font-style:italic;font-weight:400;color:var(--muted);letter-spacing:-.03em}
+.holo{background:var(--holo);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:var(--soft);max-width:58ch;margin:18px 0 0;font-size:1.05rem}
+.fine{font-family:var(--mono);font-size:13px;color:var(--faint);line-height:1.8;margin-top:44px}
+.fine a{color:var(--muted)}
+.muted{color:var(--muted)}
+code.k{font:600 .92em var(--mono);color:var(--ink);overflow-wrap:anywhere}
+
+/* секции: номер и имя слева, контент справа */
+.sec{padding-top:130px}
+.sec>.wrap>.in{display:grid;grid-template-columns:160px minmax(0,1fr);gap:0 56px;border-top:1px solid var(--line);padding-top:30px}
+.sh{position:sticky;top:96px;align-self:start;font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.sh .no{display:block;font-weight:800;font-size:14px;letter-spacing:.05em;margin-bottom:4px}
+@media(max-width:900px){.sec{padding-top:100px}.sec>.wrap>.in{grid-template-columns:1fr}.sh{position:static;display:flex;gap:14px;align-items:baseline;margin-bottom:22px}.sh .no{margin:0}}
+
+/* навигация: плавающая пилюля */
+.nav{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:2px;
+  padding:6px 6px 6px 14px;border:1px solid rgba(239,233,221,.12);border-radius:999px;background:rgba(10,9,8,.55);
+  backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);white-space:nowrap}
+.nav .brand{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-weight:800;font-size:15px;letter-spacing:-.03em;text-decoration:none;margin:0 10px 0 4px}
+.nav a.l{font-size:14px;color:var(--muted);text-decoration:none;padding:7px 12px;border-radius:999px;transition:color .15s}
+.nav a.l:hover{color:var(--ink)}
+.nav a.live{color:var(--ink);background:rgba(239,233,221,.08)}
+.nav a.live::before{content:"●";font-size:9px;color:#7fe3f5;margin-right:8px;vertical-align:1px}
+.nav .links{display:contents}
+.nav .menu{display:none;position:relative;flex:none;width:38px;height:38px;padding:0;border:0;border-radius:50%;background:rgba(239,233,221,.08);cursor:pointer}
+.nav .menu span{position:absolute;left:11px;width:16px;height:2px;border-radius:1px;background:var(--ink);transition:transform .2s,opacity .2s}
+.nav .menu span:nth-child(1){top:13px}.nav .menu span:nth-child(2){top:18px}.nav .menu span:nth-child(3){top:23px}
+.nav:has(.links:popover-open) .menu span:nth-child(1){transform:translateY(5px) rotate(45deg)}
+.nav:has(.links:popover-open) .menu span:nth-child(2){opacity:0}
+.nav:has(.links:popover-open) .menu span:nth-child(3){transform:translateY(-5px) rotate(-45deg)}
+@media(max-width:860px){
+  .nav{padding:6px 16px 6px 6px}
+  .nav .menu{display:block}
+  .nav .links{display:none}
+  .nav .links:popover-open{display:flex;flex-direction:column;position:fixed;inset:76px auto auto 50%;transform:translateX(-50%);width:min(300px,calc(100vw - 24px));margin:0;padding:8px;
+    color:var(--ink);border:1px solid rgba(239,233,221,.12);border-radius:20px;background:rgba(14,13,12,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .nav .links:popover-open a.l{padding:13px 16px;font-size:16px;border-radius:12px}
+  .nav .links:popover-open a.live{margin-top:4px}
+}
+@supports not selector(:popover-open){@media(max-width:860px){.nav .menu{display:none}.nav .links{display:contents}.nav{flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 24px);border-radius:22px}}}
+
+/* hero: канвас с кодом, текст внизу */
+.hero{position:relative;height:min(100svh,880px);min-height:620px;overflow:hidden}
+.hero canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.hero::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(120% 90% at 0% 100%,rgba(7,6,6,.92) 0%,rgba(7,6,6,.55) 38%,rgba(7,6,6,0) 66%),linear-gradient(transparent 70%,var(--bg))}
+.hero .intro{position:absolute;z-index:2;left:max(28px,calc((100vw - 1180px)/2 + 28px));bottom:clamp(56px,11vh,120px);right:28px;max-width:860px}
+@media(max-width:900px){.hero{height:auto;min-height:100svh;display:flex;flex-direction:column;justify-content:flex-end;padding-top:calc(84px + min(62vw,330px))}
+  .hero .intro{position:relative;left:auto;right:auto;bottom:auto;margin:0 28px;padding-bottom:clamp(76px,11vh,120px)}}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+.hero h1{font-family:var(--mono);font-weight:800;font-size:clamp(2rem,4vw,3.6rem);line-height:1.08;letter-spacing:-.045em;margin-top:18px}
+.hero h1 em{font-size:.86em}
+.hero p{color:var(--soft);max-width:54ch;margin:22px 0 0;font-size:1.08rem}
+.cta{display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin-top:30px}
+.pill{display:inline-flex;align-items:center;font-size:15px;font-weight:500;text-decoration:none;padding:13px 22px;border-radius:999px;
+  color:var(--ink);border:1px solid transparent;
+  background-image:linear-gradient(rgba(14,13,12,.85),rgba(14,13,12,.85)),var(--holo);background-origin:border-box;background-clip:padding-box,border-box;
+  transition:transform .15s,box-shadow .2s}
+.pill:hover{transform:translateY(-1px);box-shadow:0 0 28px rgba(180,156,255,.25)}
+.textlink{font-size:15px;color:var(--muted);text-decoration:none}.textlink:hover{color:var(--ink)}
+#motion{position:absolute;z-index:3;right:24px;bottom:24px;display:flex;align-items:center;gap:9px;font:500 13px var(--sans);color:var(--ink);
+  padding:9px 15px;border-radius:999px;border:1px solid rgba(239,233,221,.14);background:rgba(10,9,8,.55);backdrop-filter:blur(10px);cursor:pointer}
+#motion i{font-style:normal;font-size:10px;letter-spacing:-1px}
+.cur{display:inline-block;width:.6em;height:1.1em;vertical-align:-.15em;background:var(--holo);animation:blink 1.2s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* 01 полосы: каждая полоса — лента цифр */
+.chart{margin-top:50px}
+.m{display:grid;grid-template-columns:190px minmax(0,1fr);gap:24px;align-items:center;padding:20px 0}
+.m+.m{border-top:1px solid var(--line)}
+.ml b{display:block;font-family:var(--mono);font-weight:800;font-size:2.5rem;letter-spacing:-.05em;line-height:1}
+.ml span{display:block;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:10px}
+.bar{position:relative;height:26px;margin:0 84px 7px 0}
+.bar s{position:absolute;inset:0;overflow:hidden;font:400 10px/13px var(--mono);word-break:break-all;text-decoration:none;user-select:none;color:#4d463d;
+  clip-path:inset(0 calc(100% - var(--w,0%)) 0 0)}
+.bar::before{content:"";position:absolute;inset:-2px 0;background:rgba(239,233,221,.05);clip-path:inset(0 calc(100% - var(--w,0%)) 0 0)}
+.bar.h s{background:var(--holo) 0 0/var(--w,0%) 100% no-repeat;-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:700}
+.bar.h::before{background:linear-gradient(90deg,rgba(127,227,245,.13),rgba(180,156,255,.13),rgba(255,159,216,.13))}
+.bar em{position:absolute;top:50%;transform:translateY(-50%);left:calc(var(--w,0%) + 10px);font:500 12px var(--mono);font-style:normal;color:var(--faint);white-space:nowrap}
+.bar.h em{color:var(--ink);font-weight:700}
+@media(max-width:700px){.m{grid-template-columns:1fr;gap:12px}.ml{display:flex;align-items:baseline;gap:14px}.ml b{font-size:2rem}.ml span{margin-top:0}
+  .bar{height:18px;margin-right:76px}.bar s{font-size:8px;line-height:9px}.bar::before{inset:-1px 0}.bar em{font-size:11px}}
+
+/* 02 «и при этом» */
+.ay{font-family:var(--mono);font-style:italic;font-size:clamp(1.4rem,2.6vw,2rem);color:var(--muted);margin:0}
+.what{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:28px 40px;align-items:end;margin-top:26px;font-size:1.25rem;line-height:1.45}
+.what span{display:block;color:var(--muted);font-size:.98rem;margin-top:10px}
+.what .base{font-family:var(--mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.what .base b{display:block;font-size:2.4rem;letter-spacing:-.05em;color:var(--muted);text-transform:none;line-height:1.1}
+@media(max-width:800px){.what{grid-template-columns:1fr}}
+
+/* ladder: путь запроса */
+.list{list-style:none;margin:30px 0 0;padding:0}
+.list li{display:grid;grid-template-columns:56px 1fr auto;gap:18px;align-items:baseline;padding:17px 0;border-top:1px solid var(--line);transition:opacity .3s}
+.list li:last-child{border-bottom:1px solid var(--line)}
+.list .i{font-family:var(--mono);font-size:14px;color:var(--faint);transition:color .2s}
+.list .q{font-size:1.12rem}
+.list .a{font-family:var(--mono);font-size:13px;color:var(--muted);text-align:right}
+.list li.done .i,.list li.hit .i,.list li.hit .a{color:var(--ink)}
+.list li.hit .q{background:var(--holo);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:700}
+@media(max-width:640px){.list li{grid-template-columns:40px 1fr}.list .a{grid-column:2;text-align:left}}
+
+/* 04 инструменты: сетка карточек */
+.new{display:grid;grid-template-columns:1fr 1fr;gap:56px 64px;margin-top:56px}
+@media(max-width:760px){.new{grid-template-columns:1fr;gap:44px}}
+.new code{display:block;font-family:var(--mono);font-size:13px;margin-bottom:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.new h3{font-family:var(--mono);font-weight:800;font-size:1.3rem;letter-spacing:-.03em}
+.new p{color:var(--muted);margin:10px 0 0;max-width:42ch}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:28px 48px;margin-top:64px}
+.stats b{display:block;font:800 clamp(2.4rem,4.6vw,3.6rem)/1 var(--mono);letter-spacing:-.05em}
+.stats span{display:block;margin-top:10px;font-size:1.05rem}
+.stats i{display:block;margin-top:6px;font:normal 500 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+@media(max-width:640px){.stats{grid-template-columns:1fr}}
+
+/* 05 безопасность: протокол попыток */
+.tries{margin-top:40px;border:1px solid var(--line);border-radius:18px;overflow:hidden;background:rgba(239,233,221,.015)}
+.tries .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 24px;padding:13px 22px;border-top:1px solid var(--line);font:400 13.5px/1.7 var(--mono)}
+.tries .row:first-child{border-top:0}
+.tries .row.head{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.tries .deny{color:#ff9fd8}
+.tries .deny::before{content:"✕ ";color:var(--faint)}
+@media(max-width:640px){.tries .row{grid-template-columns:1fr;gap:0}.tries .deny{margin-top:2px}}
+
+/* 06 выгрузка: терминал */
+.term{margin-top:40px;border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#060606}
+.term pre{margin:0;padding:22px 24px;font:400 13px/2 var(--mono);white-space:pre-wrap;word-break:break-word;color:var(--soft)}
+.term .p{color:var(--faint);user-select:none}
+.term .hl{background:var(--holo);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:700}
+.term figcaption{padding:12px 18px;border-top:1px solid var(--line);font:500 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.rules{list-style:none;margin:40px 0 0;padding:0}
+.rules li{display:grid;grid-template-columns:56px 1fr;gap:18px;padding:17px 0;border-top:1px solid var(--line)}
+.rules li:last-child{border-bottom:1px solid var(--line)}
+.rules .i{font-family:var(--mono);font-size:14px;color:var(--faint)}
+.rules b{font-family:var(--mono);font-size:1.02rem}
+.rules span{display:block;color:var(--muted);font-size:.98rem;margin-top:6px}
+
+/* 07 подключение: табы и команды */
+.switch{display:flex;gap:10px 26px;flex-wrap:wrap;margin-top:40px;font-size:15px}
+.switch button{font:inherit;color:var(--faint);background:none;border:0;padding:0 0 6px;cursor:pointer;border-bottom:1px solid transparent}
+.switch button:hover{color:var(--soft)}
+.switch button[aria-selected="true"]{color:var(--ink);border-color:var(--ink)}
+.cmd{display:flex;align-items:flex-start;gap:24px;margin-top:30px}.cmd[hidden]{display:none}
+.cmd pre{margin:0;font-family:var(--mono);font-size:1rem;line-height:2;white-space:pre-wrap;word-break:break-word;min-height:4em}
+.cmd pre .p{color:var(--faint);user-select:none}
+.copy{font:500 13px var(--mono);color:var(--muted);background:none;border:0;cursor:pointer;padding:6px 0;margin-left:auto;white-space:nowrap}
+.copy:hover{color:var(--ink)}
+.cmds{display:grid;grid-template-columns:max-content 1fr;gap:12px 40px;margin:60px 0 0}
+.cmds dt{font-family:var(--mono);font-size:14px}.cmds dd{margin:0;color:var(--muted);font-size:15px}
+@media(max-width:640px){.cmds{grid-template-columns:1fr;gap:2px}.cmds dd{margin-bottom:14px}}
+
+/* футер */
+footer{padding:170px 0 70px}
+footer .mark{font-family:var(--mono);font-weight:800;font-size:clamp(2rem,3.4vw,2.8rem);letter-spacing:-.045em;line-height:1}
+footer .q{margin:22px 0 0;font-family:var(--mono);font-style:italic;font-size:clamp(1.2rem,2.4vw,1.8rem);color:var(--muted)}
+footer .links{display:flex;gap:24px;flex-wrap:wrap;margin-top:40px;font-size:14px;color:var(--faint)}
+footer .links a{text-decoration:none}footer .links a:hover{color:var(--ink)}
+footer .fine{margin-top:18px}
+
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body id="top">
+
+<nav class="nav" aria-label="Основная навигация">
+  <button class="menu" type="button" popovertarget="navlinks" aria-label="Меню"><span></span><span></span><span></span></button>
+  <a class="brand" href="#top">datalake<span class="cur" aria-hidden="true"></span></a>
+  <div class="links" id="navlinks" popover>
+    <a class="l" href="#data">Данные</a>
+    <a class="l" href="#contours">Контуры</a>
+    <a class="l" href="#how">Как работает</a>
+    <a class="l" href="#tools">Инструменты</a>
+    <a class="l" href="#security">Безопасность</a>
+    <a class="l" href="#install">Подключение</a>
+    <a class="l live" href="https://mcp-data-lake.first-bit.ru/mcp">боевой сервер</a>
+  </div>
+</nav>
+
+<header class="hero" id="hero">
+  <canvas id="hero-canvas" aria-hidden="true"></canvas>
+  <div class="intro">
+    <div class="kicker">datalake <span class="holo">mcp</span> · mcp-data-lake.first-bit.ru</div>
+    <h1 class="decode">Вся база компании.<br><em>Одним вопросом.</em></h1>
+    <p>MCP-сервер к внутреннему озеру данных по российским бизнес-субъектам:
+      1,16&nbsp;млн компаний, 48&nbsp;тыс. сделок, 3&nbsp;млн строк финотчётности.
+      Сотрудник спрашивает на естественном языке — агент сам формирует запрос,
+      ходит в PostgreSQL и возвращает ответ.</p>
+    <div class="cta">
+      <a class="pill" href="#install">Подключить за одну команду</a>
+      <a class="textlink" href="#how">Как это устроено ↓</a>
+    </div>
+  </div>
+  <button id="motion" type="button" aria-pressed="false"><i>❚❚</i><span>Остановить движение</span></button>
+</header>
+
+<section id="data" class="sec"><div class="wrap"><div class="in">
+  <div class="sh"><span class="no holo">01</span>Данные</div>
+  <div>
+    <h2 class="decode">Одно озеро.<br><em>Три контура. Двенадцать витрин.</em></h2>
+    <p class="lead">Всё живёт в PostgreSQL 15 и отдаётся агенту через представления схемы
+      <code class="k">mcp</code>. Базовых таблиц для агента не существует. Объёмы на полосах —
+      квадратичная шкала, иначе сделки стали бы волосяными.</p>
+    <div class="chart" id="chart">
+      <div class="m" data-v="3064767"><div class="ml"><b>3,0 млн</b><span>строк финотчётности ФНС</span></div>
+        <div class="bar h" data-scale="max"><s></s><em>3 064 767</em></div></div>
+      <div class="m" data-v="1156766"><div class="ml"><b>1,16 млн</b><span>субъектов, ЕГРЮЛ и ЕГРИП</span></div>
+        <div class="bar" data-scale="max"><s></s><em>1 156 766</em></div></div>
+      <div class="m" data-v="139926"><div class="ml"><b>139 тыс.</b><span>сайтов и их стек</span></div>
+        <div class="bar" data-scale="max"><s></s><em>139 926</em></div></div>
+      <div class="m" data-v="47972"><div class="ml"><b>48 тыс.</b><span>сделок, 2010–2025</span></div>
+        <div class="bar" data-scale="max"><s></s><em>47 972</em></div></div>
+      <div class="m" data-v="32156"><div class="ml"><b>32 тыс.</b><span>клиентов в учётной системе</span></div>
+        <div class="bar" data-scale="max"><s></s><em>32 156</em></div></div>
+    </div>
+    <p class="fine">Плюс 750 тыс. email и 559 тыс. телефонов в контактном контуре — они не на этой
+      полосе, потому что дальше в раздел о безопасности. 43% субъектов — ИП, ответ только
+      по юрлицам теряет их молча.</p>
+  </div>
+</div></div></section>
+
+<section id="contours" class="sec"><div class="wrap"><div class="in">
+  <div class="sh"><span class="no holo">02</span>Контуры</div>
+  <div>
+    <p class="ay">и при этом</p>
+    <p class="ay decode" style="color:var(--ink)">разграничение — по данным,<br>а не по людям.</p>
+    <div class="what">
+      <div>Права у всех сотрудников одинаковые. Контур определяет, <em>что</em> за данные,
+        а не <em>кто</em> спрашивает. Роль свободного SQL не видит контактные
+        представления даже в <span class="mono">information_schema</span>.
+        <span>Холодная база — для поиска лидов. Клиентский контур — для продаж.
+          Контактный — только поштучно, по одному ИНН за вызов.</span></div>
+      <div class="base">Лимит выдачи<b>1 000<br>строк</b></div>
+    </div>
+    <ol class="list">
+      <li><span class="i">01</span><span class="q">Холодный контур — публичные реестры ЕГРЮЛ и ЕГРИП</span><span class="a">1 124 610 субъектов · свободный SQL</span></li>
+      <li><span class="i">02</span><span class="q">Клиентский — продажи и привязка к ответственному</span><span class="a">32 156 клиентов · свободный SQL</span></li>
+      <li><span class="i">03</span><span class="q">Контактный — телефоны, email, ФИО, адреса физлиц</span><span class="a">только по одному ИНН · роль mcp_contacts</span></li>
+    </ol>
+  </div>
+</div></div></section>
+
+<section id="how" class="sec"><div class="wrap"><div class="in">
+  <div class="sh"><span class="no holo">03</span>Как работает</div>
+  <div>
+    <h2 class="decode">Семь шагов<br><em>от вопроса до ответа.</em></h2>
+    <p class="lead">Агент не имеет прямого доступа к базе: он вызывает инструменты сервера,
+      те выполняют запросы под read-only ролями. Каждый запрос привязан к сотруднику.</p>
+    <ol class="list ladder">
+      <li><span class="i">01</span><span class="q">Сотрудник задаёт вопрос на русском</span><span class="a">«топ клиентов за 2025»</span></li>
+      <li><span class="i">02</span><span class="q">MCP-клиент — Claude Code, Codex, OpenCode, Cursor</span><span class="a">любой MCP-клиент</span></li>
+      <li><span class="i">03</span><span class="q">OAuth 2.1 + PKCE через Zitadel</span><span class="a">JWT привязан к сотруднику</span></li>
+      <li><span class="i">04</span><span class="q">MCP Toolbox выбирает инструмент</span><span class="a">из tools.yaml — единственного источника правды</span></li>
+      <li><span class="i">05</span><span class="q">Роль mcp_agent или mcp_contacts</span><span class="a">витрины без ПДн · контакты по одному ИНН</span></li>
+      <li><span class="i">06</span><span class="q">PostgreSQL 15, схема mcp</span><span class="a">только представления · только чтение</span></li>
+      <li><span class="i">07</span><span class="q">Агент показывает SQL и ответ</span><span class="a">и каждый запрос виден в аудите</span></li>
+    </ol>
+    <p class="fine">Если агент не понял вопрос, запрос будет валидным, а число — неверным.
+      Поэтому инструкция требует показывать SQL и называть трактовку там, где от неё
+      зависит число: «компания» — юрлицо, ИП или оба; «выручка» — наши продажи или
+      выручка контрагента по ФНС.</p>
+  </div>
+</div></div></section>
+
+<section id="tools" class="sec"><div class="wrap"><div class="in">
+  <div class="sh"><span class="no holo">04</span>Инструменты</div>
+  <div>
+    <h2 class="decode">Четырнадцать инструментов.<br><em>Один свободный SQL и справочник, который не врёт.</em></h2>
+    <p class="lead">Готовые отчёты нужны там, где ручной SQL легко даёт правдоподобный,
+      но неверный результат: привязка заказа к юрлицу и к ИП считается в обеих ветвях
+      сразу, группы товаров берутся из справочника, а не из текстового поля выгрузки.</p>
+    <div class="stats">
+      <div><b class="holo">14</b><span>инструментов</span><i>tools.yaml</i></div>
+      <div><b>12</b><span>витрин схемы mcp</span><i>только представления</i></div>
+      <div><b>8</b><span>готовых отчётов</span><i>для развилок семантики</i></div>
+    </div>
+    <div class="new">
+      <div><code class="holo">query_marts --sql "SELECT …"</code><h3>Свободный SQL.</h3>
+        <p>Один <code class="k">SELECT</code> по представлениям схемы mcp. Основной рабочий
+        инструмент — агент пишет запрос сам. Только чтение, лимит 1000 строк.</p></div>
+      <div><code class="holo">describe_data --view_name v_order</code><h3>Справочник из самой базы.</h3>
+        <p>Витрины, колонки с типами, пояснения к ловушкам — <code class="k">amount</code> против
+        <code class="k">sum</code>, <code class="k">type_activity</code> — это не ОКВЭД — и перечень
+        того, чего в базе нет.</p></div>
+      <div><code class="holo">find_subject_by_name --name "…"</code><h3>Точка входа по названию.</h3>
+        <p>Остальные инструменты принимают только ИНН. Сначала поиск по названию,
+        потом всё остальное.</p></div>
+      <div><code class="holo">get_contacts_by_inn</code><h3>Контакты — строго поштучно.</h3>
+        <p>Телефон, email, ФИО и адреса — по одному ИНН за вызов, под отдельной ролью.
+        Массовая выгрузка невозможна архитектурно.</p></div>
+      <div><code class="holo">top_clients_by_revenue · find_leads</code><h3>Готовые отчёты.</h3>
+        <p>Топ покупателей, профиль контрагента, продажи по периодам и группам товаров,
+        поиск лидов по холодной базе, финотчётность по ИНН, клиенты без сделок,
+        отчёт о качестве данных.</p></div>
+      <div><code class="holo">column "registration_date" does not exist</code><h3>Отказ вместо выдумки.</h3>
+        <p>Полей, которых нет в базе, в представлениях нет намеренно: похожих колонок
+        не существует, подставить нечего. Запрос по ним даёт ошибку, а не пустую
+        выборку.</p></div>
+    </div>
+  </div>
+</div></div></section>
+
+<section id="security" class="sec"><div class="wrap"><div class="in">
+  <div class="sh"><span class="no holo">05</span>Безопасность</div>
+  <div>
+    <h2 class="decode">Граница — права роли,<br><em>а не парсер приложения.</em></h2>
+    <p class="lead">Read-only выставлен на самой роли Postgres, а не в коде: обойти настройку
+      роли нельзя. Контакты доступны только поштучно: чтобы выгрузить 750 тысяч контактов,
+      нужно 750 тысяч вызовов — и это видно в логах на первой сотне.</p>
+    <div class="stats">
+      <div><b class="holo">38</b><span>попыток инъекции и эскалации</span><i>security_probe.py, в CI</i></div>
+      <div><b>0</b><span>успешных</span><i>всё отклонено ролью</i></div>
+      <div><b>100%</b><span>запросов под аудитом</span><i>сотрудник в application_name</i></div>
+    </div>
+    <div class="tries" role="table" aria-label="Протокол попыток на стенде">
+      <div class="row head"><span>Попытка</span><span>Результат</span></div>
+      <div class="row"><span>SELECT * FROM public.emails</span><span class="deny">permission denied for table emails</span></div>
+      <div class="row"><span>SELECT * FROM mcp.v_contact из свободного SQL</span><span class="deny">permission denied for view v_contact</span></div>
+      <div class="row"><span>CREATE TABLE …</span><span class="deny">cannot execute in a read-only transaction</span></div>
+      <div class="row"><span>SELECT 1; CREATE TABLE …</span><span class="deny">cannot insert multiple commands</span></div>
+      <div class="row"><span>Запрос без токена · с чужим токеном</span><span class="deny">401</span></div>
+      <div class="row"><span>SET ROLE master_chief</span><span class="deny">permission denied to set role</span></div>
+      <div class="row"><span>pg_read_file('/etc/passwd')</span><span class="deny">permission denied for function</span></div>
+      <div class="row"><span>COPY … TO PROGRAM 'id'</span><span class="deny">требует pg_execute_server_program</span></div>
+      <div class="row"><span>SELECT * FROM pg_authid</span><span class="deny">permission denied for table pg_authid</span></div>
+      <div class="row"><span>CREATE EXTENSION dblink</span><span class="deny">permission denied to create extension</span></div>
+      <div class="row"><span>ALTER SYSTEM SET …</span><span class="deny">permission denied to set parameter</span></div>
+    </div>
+    <p class="fine">Модель внешняя: каждая отданная строка покидает контур компании. Это осознанное
+      решение, отсюда лимиты на выдачу и поштучный доступ к контактам. Сервер не должен быть
+      доступен из интернета: только корпоративная сеть или VPN.</p>
+  </div>
+</div></div></section>
+
+<section id="export" class="sec"><div class="wrap"><div class="in">
+  <div class="sh"><span class="no holo">06</span>Выгрузка</div>
+  <div>
+    <h2 class="decode">Большой список — это файл,<br><em>а не контекст модели.</em></h2>
+    <p class="lead">Предел в 1000 строк — не про безопасность, а про физику: строка из десяти
+      колонок стоит 30–60 токенов, тысяча строк съедает почти всё окно модели. Плюс модель
+      внешняя. Поэтому выгрузка идёт мимо модели: SQL не дублируется — скрипт берёт запрос
+      из того же tools.yaml.</p>
+    <figure class="term">
+      <pre class="type"><span class="p">$ </span>python mcp/export.py --tool find_leads \
+    --param region=77 --param min_employees=100 \
+    --param require_site=true --param row_limit=20000
+
+<span class="hl">Готово за 3.0 с</span>
+  файл:    outputs/leads.csv (1.2 MB)
+  строк:   4100
+  колонок: 10 — subject_type, inn, name, region, …</pre>
+      <figcaption>в контекст модели попадает только эта сводка</figcaption>
+    </figure>
+    <ol class="rules">
+      <li><span class="i">01</span><div><b>Вопрос на самом деле про агрегат.</b>
+        <span>«Каких клиентов больше всего» — это count, sum, топ-N. Ответ в двадцать строк.</span></div></li>
+      <li><span class="i">02</span><div><b>Надо посмотреть, что там.</b>
+        <span>Сначала count(*) с тем же WHERE, потом решение. Для «посмотреть глазами» хватает двадцати строк.</span></div></li>
+      <li><span class="i">03</span><div><b>Нужен весь список — это выгрузка.</b>
+        <span>CSV и XLSX до миллиона строк, серверный курсор порциями по 5000, таймаут 120 с. Контакты недоступны и здесь.</span></div></li>
+    </ol>
+  </div>
+</div></div></section>
+
+<section id="install" class="sec"><div class="wrap"><div class="in">
+  <div class="sh"><span class="no holo">07</span>Подключение</div>
+  <div>
+    <h2 class="decode">Одна команда.<br><em>Потом спросить по-русски.</em></h2>
+    <div class="switch tabs" role="tablist" aria-label="Клиент">
+      <button role="tab" aria-selected="true" data-t="cc">Claude Code</button>
+      <button role="tab" aria-selected="false" data-t="codex">Codex CLI</button>
+      <button role="tab" aria-selected="false" data-t="opencode">OpenCode</button>
+      <button role="tab" aria-selected="false" data-t="others">Cursor · Desktop · ChatGPT</button>
+    </div>
+    <div class="cmd" data-p="cc">
+      <pre>claude mcp add --transport http datalake \
+    https://mcp-data-lake.first-bit.ru/mcp \
+    --client-id 389975564900892674 -s user</pre>
+      <button class="copy" type="button">copy</button></div>
+    <div class="cmd" data-p="codex" hidden>
+      <pre><span class="p">$ </span>codex mcp add datalake \
+    --url https://mcp-data-lake.first-bit.ru/mcp \
+    --oauth-client-id 389975564900892674
+<span class="p">$ </span>codex mcp login datalake</pre>
+      <button class="copy" type="button">copy</button></div>
+    <div class="cmd" data-p="opencode" hidden>
+      <pre><span class="p">// </span>~/.config/opencode/opencode.json
+"mcp": { "datalake": {
+  "type": "remote",
+  "url": "https://mcp-data-lake.first-bit.ru/mcp",
+  "enabled": true,
+  "oauth": { "clientId": "389975564900892674" }
+}}
+
+<span class="p">$ </span>opencode mcp auth datalake</pre>
+      <button class="copy" type="button">copy</button></div>
+    <div class="cmd" data-p="others" hidden>
+      <pre><span class="p">// </span>в настройках коннектора — два значения:
+адрес сервера  https://mcp-data-lake.first-bit.ru/mcp
+client id      389975564900892674</pre>
+      <button class="copy" type="button">copy</button></div>
+    <p class="fine">Вход — рабочей учётной записью, той же, что в GitLab и вики.
+      После подключения перезапустить клиент: инструменты читаются при старте сессии.
+      Подробно про каждый клиент — в CONNECT.md.</p>
+    <dl class="cmds">
+      <dt>«что у нас по "Планета Софт"»</dt><dd>профиль контрагента одним вопросом</dd>
+      <dt>«топ-20 клиентов по выручке за 2025»</dt><dd>готовый отчёт, обе ветви привязки</dd>
+      <dt>«что известно про ИНН 2460049048»</dt><dd>реквизиты, продажи, сайты, лицензии, финотчётность</dd>
+      <dt>«найди не-клиентов с сайтом на Bitrix»</dt><dd>поиск лидов по холодной базе, 1,1 млн субъектов</dd>
+      <dt>«покажи SQL»</dt><dd>агент обязан показывать; так ловится подмена смысла</dd>
+      <dt>«а чего в базе нет?»</dt><dd>справочник перечислит: дат регистрации, ОКВЭД, руководителей</dd>
+    </dl>
+  </div>
+</div></div></section>
+
+<footer>
+  <div class="wrap">
+    <div class="mark" aria-hidden="true">datalake<span class="cur"></span></div>
+    <p class="q">Спрашивай словами. SQL покажем.</p>
+    <div class="links">
+      <a href="https://mcp-data-lake.first-bit.ru/mcp">боевой сервер</a>
+      <span>внутренний проект</span>
+    </div>
+    <p class="fine">Только чтение · контакты по одному ИНН · каждый запрос в аудите.</p>
+  </div>
+</footer>
+
+<script>
+// Всё нарисовано кодом. Каждый эффект стартует, когда виден, и замирает, когда доиграл.
+// При reduced motion сразу видны конечные состояния; кнопка паузы замораживает hero.
+(() => {
+"use strict";
+// текстура кода: настоящие запросы, которые сервер выполняет из mcp/tools.yaml
+const SRC = "WITH ask AS ( SELECT nullif(btrim($1::text), '') AS q, CASE WHEN $2::int > 0 THEN least($2::int, 100) ELSE 20 END AS n ) SELECT s.subject_type, s.inn, s.name, s.region, s.is_client, s.owner, s.manager, s.employee_count, s.type_activity FROM mcp.v_subject s, ask WHERE ask.q IS NOT NULL AND s.name ILIKE '%' || ask.q || '%' ORDER BY s.is_client DESC, length(s.name), s.name LIMIT (SELECT n FROM ask); SELECT customer_inn, customer_name, customer_type, customer_region, count(*) AS order_count, sum(quantity) AS total_quantity, round(sum(amount)::numeric, 2) AS total_amount, min(sale_date) AS first_order_date, max(sale_date) AS last_order_date FROM mcp.v_order WHERE sale_date >= $1::date AND sale_date <= $2::date GROUP BY customer_inn, customer_name, customer_type, customer_region HAVING sum(amount) > 0 ORDER BY total_amount DESC LIMIT $3; SELECT to_char(date_trunc('month', sale_date), 'YYYY-MM') AS month, count(*) AS order_count, count(DISTINCT customer_inn) AS customer_count, sum(quantity) AS total_quantity, round(sum(amount)::numeric, 2) AS total_amount, round(avg(amount)::numeric, 2) AS avg_amount FROM mcp.v_order WHERE sale_date >= $1::date AND sale_date <= $2::date GROUP BY date_trunc('month', sale_date) ORDER BY month; WITH ask AS ( SELECT nullif(btrim($1::text), '') AS region, nullif(btrim($2::text), '') AS activity, nullif($3::int, 0) AS min_employees ), picked AS ( SELECT s.subject_type, s.inn, s.name, s.region, s.employee_count, s.type_activity, s.has_edo FROM mcp.v_subject s, ask WHERE NOT s.is_client AND (ask.region IS NULL OR s.region = ask.region) AND (ask.activity IS NULL OR s.type_activity ILIKE '%' || ask.activity || '%') AND (ask.min_employees IS NULL OR s.employee_count >= ask.min_employees) AND ($4::boolean = false OR EXISTS ( SELECT 1 FROM mcp.v_site v WHERE v.inn = s.inn)) ORDER BY s.employee_count DESC NULLS LAST, s.name LIMIT $5 ) SELECT p.subject_type, p.inn, p.name, p.region, p.employee_count, p.type_activity, p.has_edo, si.url, si.cms, si.status AS site_status FROM picked p LEFT JOIN LATERAL ( SELECT url, cms, status FROM mcp.v_site WHERE inn = p.inn ORDER BY checked_at DESC NULLS LAST LIMIT 1 ) si ON true ORDER BY p.employee_count DESC NULLS LAST, p.name; SELECT year, income, outcome, (income - outcome) AS margin FROM mcp.v_financial WHERE inn = $1 AND (income IS NOT NULL OR outcome IS NOT NULL) ORDER BY year DESC LIMIT 30;";
+const HOLO = [[127, 227, 245], [180, 156, 255], [255, 159, 216]], GLYPHS = "01<>{}[]=+*#%$/\\|";
+const hash = (a, b, c = 0) => { let h = (a * 374761393 + b * 668265263 + c * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const ease = k => 1 - Math.pow(1 - clamp(k), 3);
+const holoAt = u => (u = clamp(u)) < .5 ? mix(HOLO[0], HOLO[1], u * 2) : mix(HOLO[1], HOLO[2], (u - .5) * 2);
+const glyph = (a, b) => GLYPHS[(hash(a, b, 3) * GLYPHS.length) | 0];
+const mono = (w, s) => `${w} ${s}px "JetBrains Mono", ui-monospace, monospace`;
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const once = (el, fn, threshold = .3) => { const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); fn(); } }, { threshold }); io.observe(el); };
+const onResize = fn => { let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(fn, 150); }); document.fonts.ready.then(fn); };
+const textNodes = el => { const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), out = []; while (w.nextNode()) out.push(w.currentNode); return out; };
+// проигрывает set(t) от 0 до end секунд, когда el появится на экране
+const play = (el, set, end, threshold) => {
+  if (reduced) return set(end);
+  set(0);
+  once(el, () => { const t0 = performance.now(); (function step(ms) { const t = Math.min(end, (ms - t0) / 1000); set(t); if (t < end) requestAnimationFrame(step); })(t0); }, threshold);
+};
+
+/* hero: поле тусклого кода; клетки под фигурой загораются и держатся.
+   Фигуры по очереди: база («вся база компании»), SQL, который агент пишет сам, пауза. */
+(function hero() {
+  const cv = $("#hero-canvas"), btn = $("#motion"), nav = $(".nav"), intro = cv.parentElement.querySelector(".intro");
+  // значок базы в рамке 100×120: верхний эллипс, стенки и три дуги
+  const DB = "M8 20a42 15 0 1 0 84 0a42 15 0 1 0-84 0M8 20v78c0 8.3 18.8 15 42 15s42-6.7 42-15V20M8 46c0 8.3 18.8 15 42 15s42-6.7 42-15M8 72c0 8.3 18.8 15 42 15s42-6.7 42-15";
+  const seq = [{ path: DB, scale: W => W > 900 ? .9 : .8, dur: 9 }, { glyph: "SQL", scale: () => .95, dur: 7 }, { dur: 4 }];
+  const SWITCH = 1.3, FADE = .45, starts = [], total = seq.reduce((a, s) => (starts.push(a), a + s.dur), 0);
+  const bg = document.createElement("canvas");
+  let ctx, W, H, CW, LH, FS, COLS, ROWS, lit = [], bgRow = -1;
+  let frozen = reduced, onScreen = false, started = false, t0 = performance.now(), tPause = 0, last = 0;
+  // справа от заголовка на широком экране; на узком — в полосе между навигацией и текстом, её держит CSS
+  function place() {
+    if (W > 900) return [W * .79, H * .52, Math.min(H * .84, W * .38)];
+    const top = nav.offsetTop + nav.offsetHeight + 12, bot = Math.max(top + 120, intro.offsetTop - 20);
+    return [W * .5, (top + bot) / 2, Math.min((bot - top) / .85, W * .9)];
+  }
+  // какие клетки накрывает фигура: рисуем её в полный размер и ужимаем до пикселя на клетку
+  function maskOf(s) {
+    const [gx, gy, size0] = place(), size = size0 * s.scale(W), m = document.createElement("canvas");
+    m.width = Math.round(COLS * CW); m.height = Math.round(ROWS * LH);
+    const g = m.getContext("2d");
+    if (s.path) { const k = size / 120; g.translate(gx - 50 * k, gy - 60 * k); g.scale(k, k); g.lineWidth = 8; g.stroke(new Path2D(s.path)); }
+    else {                                         // слово ужимается, чтобы по ширине не выйти за размер фигуры
+      const font = px => `900 ${px}px Impact, "Arial Black", Arial, sans-serif`;   // узкий жирный: при той же ширине буквы выше
+      g.font = font(size); g.font = font(size * Math.min(1, size / g.measureText(s.glyph).width));
+      g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s.glyph, gx, gy);
+    }
+    const sm = document.createElement("canvas"); sm.width = COLS; sm.height = ROWS;
+    const sg = sm.getContext("2d", { willReadFrequently: true }); sg.imageSmoothingQuality = "high"; sg.drawImage(m, 0, 0, COLS, ROWS);
+    const px = sg.getImageData(0, 0, COLS, ROWS).data, set = new Uint8Array(COLS * ROWS), cells = [], box = [COLS, ROWS, 0, 0];
+    for (let i = 0; i < set.length; i++) if (px[i * 4 + 3] > (s.path ? 40 : 97)) {
+      const x = i % COLS, y = (i / COLS) | 0; set[i] = 1; cells.push(i);
+      box[0] = Math.min(box[0], x); box[1] = Math.min(box[1], y); box[2] = Math.max(box[2], x); box[3] = Math.max(box[3], y);
+    }
+    return { set, cells, box };
+  }
+  function layout() {
+    const dpr = Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight;
+    for (const c of [cv, bg]) { c.width = W * dpr; c.height = H * dpr; c.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0); }
+    ctx = cv.getContext("2d"); bgRow = -1;
+    FS = W < 700 ? 11 : 13; LH = Math.round(FS * 1.32);
+    ctx.font = mono(400, FS); CW = ctx.measureText("M").width;
+    COLS = Math.ceil(W / CW); ROWS = Math.ceil(H / LH);
+    seq.forEach(s => s.mask = s.path || s.glyph ? maskOf(s) : null);
+    lit = [...new Set(seq.flatMap(s => s.mask ? s.mask.cells : []))];
+  }
+  // радужный градиент по фигуре и белый блик, который проходит по ней
+  function holo(x, y, t, b) {
+    const fx = (x - b[0]) / Math.max(1, b[2] - b[0]), fy = (y - b[1]) / Math.max(1, b[3] - b[1]);
+    const c = holoAt(fx * .7 + fy * .3 + .06 * Math.sin(t * .35 + y * .05)), d = fx - fy * .45 - ((t * .11) % 1.6 - .3);
+    return mix(c, [255, 255, 255], .4 * Math.exp(-d * d / .004));
+  }
+  const charAt = (x, y, row) => { const ch = SRC[((y + row) * COLS + x) % SRC.length]; return ch === " " ? "·" : ch; };
+  // тусклый код кешируется и перерисовывается, только когда сдвигается на строку
+  function drawBg(row) {
+    const b = bg.getContext("2d"); b.clearRect(0, 0, W, H); b.font = mono(400, FS); b.fillStyle = "#211e1b";
+    for (let y = 0; y < ROWS; y++) { let line = ""; for (let x = 0; x < COLS; x++) line += SRC[((y + row) * COLS + x) % SRC.length]; b.fillText(line, 0, (y + 1) * LH); }
+    bgRow = row;
+  }
+  function frame(t) {
+    const row = Math.floor(t * 1.1);
+    if (row !== bgRow) drawBg(row);
+    ctx.clearRect(0, 0, W, H); ctx.drawImage(bg, 0, 0, W, H);
+    ctx.font = mono(400, FS); ctx.fillStyle = "#efe9dd";
+    for (let k = 0; k < 40; k++) {                   // мерцающие символы, у каждого свои часы
+      const tk = t * .7 + hash(k, 9), i = (hash(k, Math.floor(tk)) * COLS * ROWS) | 0, x = i % COLS, y = (i / COLS) | 0;
+      ctx.globalAlpha = .5 * Math.sin((tk % 1) * Math.PI); ctx.fillText(charAt(x, y, row), x * CW, (y + 1) * LH);
+    }
+    ctx.font = mono(800, FS);
+    // каждая клетка переключается в свой момент и на переходе мерцает глифами
+    const lt = frozen ? SWITCH + FADE + .3 : t % total;
+    let k = 0; while (k + 1 < seq.length && lt >= starts[k + 1]) k++;
+    const cur = seq[k], prev = seq[(k + seq.length - 1) % seq.length];
+    for (const i of lit) {
+      const a = prev.mask ? prev.mask.set[i] : 0, b = cur.mask ? cur.mask.set[i] : 0;
+      if (!a && !b) continue;
+      const sw = starts[k] + hash(i, k, 7) * SWITCH, p = clamp((lt - sw) / FADE), v = a + (b - a) * p;
+      const switching = a !== b && lt > sw - .25 && lt < sw + FADE;
+      if (v <= .01 && !switching) continue;
+      const s = b && (p >= .5 || !a) ? cur : prev, x = i % COLS, y = (i / COLS) | 0, c = holo(x, y, t, s.mask.box), al = Math.max(v, switching ? .5 : 0);
+      ctx.globalAlpha = al * .1; ctx.fillStyle = rgb(c); ctx.fillRect(x * CW, y * LH + 3, CW + .5, LH + .5);
+      ctx.globalAlpha = al; ctx.fillStyle = rgb(mix(c, [255, 255, 255], .08)); ctx.shadowColor = rgb(c, .85); ctx.shadowBlur = 12;
+      ctx.fillText(switching ? glyph(i, Math.floor(t * 18)) : charAt(x, y, row), x * CW, (y + 1) * LH); ctx.shadowBlur = 0;
+    }
+    ctx.globalAlpha = 1;
+  }
+  const now = () => frozen ? tPause : (performance.now() - t0) / 1000;
+  function tick(ms) {
+    if (started && !frozen && onScreen && !document.hidden && ms - last > 33) { last = ms; frame((ms - t0) / 1000); }
+    requestAnimationFrame(tick);
+  }
+  function setFrozen(f) {
+    if (f) tPause = now(); else t0 = performance.now() - tPause * 1000;
+    frozen = f; if (f) frame(tPause);
+    btn.setAttribute("aria-pressed", String(f));
+    btn.querySelector("i").textContent = f ? "▶" : "❚❚";
+    btn.querySelector("span").textContent = f ? "Пустить движение" : "Остановить движение";
+  }
+  new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; if (onScreen && !started) { started = true; t0 = performance.now(); } }, { threshold: .25 }).observe(cv);
+  btn.addEventListener("click", () => setFrozen(!frozen));
+  onResize(() => { layout(); frame(now()); });
+  layout(); setFrozen(frozen);
+  requestAnimationFrame(tick);
+})();
+
+/* заголовки проявляются из глифов слева направо; скринридеру — обычный текст */
+if (!reduced) $$(".decode").forEach(el => {
+  const sr = document.createElement("span"), vis = document.createElement("span");
+  sr.className = "sr"; sr.textContent = el.innerText.replace(/\s+/g, " ").trim(); vis.setAttribute("aria-hidden", "true");
+  vis.append(...el.childNodes); el.append(sr, vis);
+  const nodes = textNodes(vis).map(n => [n, n.data]), total = nodes.reduce((a, [, s]) => a + s.length, 0);
+  const paint = k => { let i = 0; const q = Math.floor(performance.now() / 60);
+    for (const [n, s] of nodes) n.data = [...s].map(c => (i++, /\s/.test(c) || k >= .25 + .75 * i / total ? c : glyph(i, q))).join(""); };
+  paint(0);
+  once(el, () => { const t0 = performance.now(), dur = 500 + total * 16;
+    (function step(ms) { const k = (ms - t0) / dur; paint(k); if (k < 1) requestAnimationFrame(step); })(t0); }, .6);
+});
+
+/* бегущие цифры: первое число в тексте растёт от нуля, запятая, пробелы и подпись сохраняются */
+function counter(el) {
+  const n = textNodes(el).find(n => /\d/.test(n.data)), s = n.data;
+  const m = s.match(/(\d{1,3}(?:\s\d{3})+|\d+)(?:,(\d+))?/), sep = (m[1].match(/\s/) || [""])[0], dec = m[2] ? m[2].length : 0;
+  const v = parseFloat(m[1].replace(/\s/g, "") + "." + (m[2] || 0)), pre = s.slice(0, m.index), post = s.slice(m.index + m[0].length);
+  return k => {
+    let [int, frac] = (v * ease(k)).toFixed(dec).split(".");
+    if (sep) int = int.replace(/\B(?=(\d{3})+$)/g, sep);
+    n.data = pre + int + (frac ? "," + frac : "") + post;
+  };
+}
+
+/* 01 полосы: каждая полоса — лента кода, которая дописывается до своего значения по квадратичной шкале; числа бегут вместе с ней */
+(function chart() {
+  const ms = $$("#chart .m"), smax = Math.sqrt(Math.max(...ms.map(m => +m.dataset.v)));
+  const rows = ms.map((m, r) => {
+    const bar = m.querySelector(".bar");
+    bar.querySelector("s").textContent = (SRC + SRC).substr(r * 397 % SRC.length, 900);
+    return { bar, w: Math.max(4, Math.round(Math.sqrt(+m.dataset.v) / smax * 100)), nums: [counter(m.querySelector(".ml b")), counter(bar.querySelector("em"))] };
+  });
+  play($("#chart"), t => rows.forEach((r, i) => {
+    const k = (t - i * .25) / 1.2;
+    r.bar.style.setProperty("--w", r.w * ease(k) + "%"); r.nums.forEach(f => f(k));
+  }), 2.4, .25);
+})();
+
+/* остальные числа: статистика и лимит выдачи */
+$$(".stats, .what .base").forEach(box => {
+  const nums = [...box.querySelectorAll("b")].map(counter);
+  play(box, t => nums.forEach((f, i) => f((t - i * .15) / 1.2)), 1.6, .4);
+});
+
+/* лестница пути запроса: запрос проходит шаг за шагом, пройденные остаются отмеченными */
+(function ladder() {
+  const items = $$(".list.ladder li");
+  const show = n => items.forEach((li, i) => li.className = i < n ? "done" : i === n ? "hit" : "");
+  if (reduced) return show(items.length - 1);
+  once(items[0], () => { let n = 0; show(0); const timer = setInterval(() => { if (++n >= items.length) return clearInterval(timer); show(n); }, 450); }, .3);
+})();
+
+/* текст, который печатается сам: команды подключения и терминал выгрузки. Приглашения (.p) появляются сразу */
+const prep = el => el._nodes ??= textNodes(el).map(n => [n, n.data, !!n.parentElement.closest(".p")]);
+// высота фиксируется заранее, чтобы страница не прыгала, пока текст печатается
+const blank = el => { if (!el.style.minHeight && el.offsetHeight) el.style.minHeight = el.offsetHeight + "px"; prep(el).forEach(([n]) => n.data = ""); };
+function typeIn(pre) {
+  if (reduced) return;
+  const run = pre._run = (pre._run || 0) + 1, cur = document.createElement("span"); cur.className = "cur";
+  pre.querySelectorAll(".cur").forEach(c => c.remove());
+  blank(pre);
+  let j = 0, c = 0;
+  (function step() {
+    if (run !== pre._run) return;
+    if (j >= pre._nodes.length) return setTimeout(() => cur.remove(), 1600);
+    const [n, s, prompt] = pre._nodes[j];
+    if (prompt) { n.data = s; j++; return step(); }
+    n.data = s.slice(0, ++c); n.after(cur);
+    const pause = s[c - 1] === "\n" ? 260 : 24;
+    if (c >= s.length) { j++; c = 0; }
+    setTimeout(step, pause);
+  })();
+}
+if (!reduced) $$(".type").forEach(el => { blank(el); once(el, () => typeIn(el), .5); });
+
+/* 07 табы подключения; copy всегда берёт команду целиком, сколько бы ни напечаталось */
+const pres = $$(".cmd pre"), tabs = $$(".switch.tabs button"), cmds = $$(".cmd");
+pres.forEach(pre => pre._full = pre.textContent.replace(/^\s*\/\/.*\n/m, "").replace(/^\$ /gm, "").trimEnd());
+tabs.forEach(b => b.addEventListener("click", () => {
+  tabs.forEach(x => x.setAttribute("aria-selected", String(x === b)));
+  cmds.forEach(c => { c.hidden = c.dataset.p !== b.dataset.t; if (!c.hidden) typeIn(c.querySelector("pre")); });
+}));
+$$(".copy").forEach(b => b.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(b.previousElementSibling._full); b.textContent = "скопировано"; } catch { b.textContent = "выделите и скопируйте"; }
+  setTimeout(() => b.textContent = "copy", 1600);
+}));
+if (!reduced) { blank(pres[0]); once($("#install"), () => typeIn(pres[0]), .3); }
+})();
+</script>
+</body>
+</html>
