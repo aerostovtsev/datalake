@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Подключение к datalake</title>
+<meta name="description" content="Настройка MCP-сервера datalake в Claude Code, Codex CLI, OpenCode и других клиентах.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23070606'/%3E%3Ctext x='32' y='46' text-anchor='middle' font-family='monospace' font-size='48' fill='%237fe3f5'%3Ed%3C/text%3E%3C/svg%3E">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#070606;color:#efe9dd;font:17px/1.65 system-ui,sans-serif}
+main{max-width:900px;margin:0 auto;padding:40px 24px 80px}a{color:#7fe3f5}h1,h2{line-height:1.2;overflow-wrap:anywhere}h2{margin-top:48px}
+pre{padding:20px;background:#141311;border:1px solid #47423b;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 ui-monospace,monospace}
+code{overflow-wrap:anywhere}li{margin:8px 0}a:focus-visible{outline:2px solid #7fe3f5;outline-offset:4px}
+@media print{body{background:#fff;color:#111}a{color:#111}pre{background:#fff}main{padding:0}}
+</style>
+</head>
+<body><main>
+<a href="./#install">← Вернуться к подключению</a>
+<h1>Подключение к datalake</h1>
+<p>Используйте клиент с поддержкой удалённых MCP-серверов и OAuth. Вход выполняется рабочей учётной записью. Динамическая регистрация клиентов выключена, поэтому указанный Client ID обязателен.</p>
+<ul>
+  <li>Адрес сервера: <code>https://mcp-data-lake.first-bit.ru/mcp</code></li>
+  <li>OAuth Client ID: <code>389975564900892674</code></li>
+</ul>
+<h2>Claude Code</h2>
+<p>Выполните команду в терминале:</p>
+<pre>claude mcp add --transport http datalake \
+  https://mcp-data-lake.first-bit.ru/mcp \
+  --client-id 389975564900892674 -s user</pre>
+<p>Откройте Claude Code и выполните <code>/mcp</code>, чтобы пройти авторизацию для datalake. После подключения начните новую сессию.</p>
+<h2>Codex CLI</h2>
+<p>Добавьте сервер и выполните вход:</p>
+<pre>codex mcp add datalake \
+  --url https://mcp-data-lake.first-bit.ru/mcp \
+  --oauth-client-id 389975564900892674
+codex mcp login datalake</pre>
+<p>Список настроенных серверов показывает <code>codex mcp list</code>. Затем начните новую сессию Codex.</p>
+<h2>OpenCode</h2>
+<p>В новый файл <code>~/.config/opencode/opencode.json</code> вставьте этот JSON. Если файл уже существует, добавьте только запись <code>datalake</code> в его раздел <code>mcp</code>, сохранив остальные настройки.</p>
+<pre>{
+  "mcp": {
+    "datalake": {
+      "type": "remote",
+      "url": "https://mcp-data-lake.first-bit.ru/mcp",
+      "enabled": true,
+      "oauth": { "clientId": "389975564900892674" }
+    }
+  }
+}</pre>
+<p>Сохраните файл, затем отдельно выполните в терминале:</p>
+<pre>opencode mcp auth datalake</pre>
+<p>Пройдите вход в открывшемся браузере и перезапустите OpenCode. Команда <code>opencode mcp debug datalake</code> помогает проверить подключение.</p>
+<h2>Cursor, Claude Desktop и ChatGPT</h2>
+<p>В настройках удалённого MCP-сервера или коннектора укажите адрес сервера и OAuth Client ID из начала этой страницы. Названия и доступность настроек зависят от клиента и версии. После сохранения пройдите вход рабочей учётной записью и начните новую сессию.</p>
+<h2>Если подключение не получилось</h2>
+<ul>
+  <li>Ответ <code>401 missing access token</code> при открытии адреса MCP в обычной вкладке ожидаем: вход выполняется из MCP-клиента.</li>
+  <li>Ошибка о неподдерживаемой динамической регистрации означает, что клиент не передал указанный OAuth Client ID.</li>
+  <li>Если сервер недоступен, проверьте доступ к корпоративной сети или VPN.</li>
+  <li>Если после входа сервер отклоняет адрес возврата, передайте администратору название клиента и показанный callback URL. Не передавайте токены.</li>
+</ul>
+<p>Для первой проверки спросите агента: «Какие данные есть в базе?» — он должен вызвать инструмент <code>describe_data</code>.</p>
+</main></body>
+</html>
